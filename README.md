@@ -2,7 +2,7 @@
 
 ## Executive summary
 
-This repository provides a GitHub Actions–driven CI/CD framework for Boomi Data Integration (Rivery) rivers, using YAML as the source of truth. The template is designed to help teams standardize pipeline deployment, keep changes auditable, and operate safely across environments (Dev/Staging/Prod). It supports exporting, creating, updating, activating, running, and disabling rivers, plus exporting schema/table inventories for data discovery.
+This repository provides a GitHub Actions–driven CI/CD framework for Boomi Data Integration pipelines, using YAML as the source of truth. The template is designed to help teams standardize pipeline deployment, keep changes auditable, and operate safely across environments (Dev/Staging/Prod). It supports exporting, creating, updating, activating, running, and disabling rivers, plus exporting schema/table inventories for data discovery.
 
 ## Intended audience
 
