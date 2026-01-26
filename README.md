@@ -29,7 +29,6 @@ This repository provides a GitHub Actions–driven CI/CD framework for Boomi Dat
 
 - Create or manage Boomi environments.
 - Create or rotate connection credentials.
-- Handle non-Rivery Data Integration assets.
 
 ## Repository structure
 
