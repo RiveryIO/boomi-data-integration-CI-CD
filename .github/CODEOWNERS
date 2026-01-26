@@ -1,0 +1,4 @@
+# Team ownership per folder
+/configs/pipelines/team-a/  @Merv-Boomi
+/scripts/                   @Merv-Boomi
+/.github/workflows/         @Merv-Boomi

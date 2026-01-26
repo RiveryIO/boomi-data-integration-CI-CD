@@ -1,0 +1,69 @@
+name: Export River
+
+on:
+  workflow_dispatch:
+    inputs:
+      river_id:
+        description: "River cross_id to export"
+        required: true
+      json_out:
+        description: "Path to write the raw river JSON"
+        required: false
+        default: "exports/river.json"
+      yaml_out:
+        description: "Path to write the YAML pipeline config"
+        required: false
+        default: "configs/pipelines/exported/river.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  export_river:
+    runs-on: ubuntu-latest
+    env:
+      ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
+      ENV_ID:     ${{ secrets.ENV_ID }}
+      TOKEN:      ${{ secrets.TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pyyaml
+
+      - name: Export river
+        run: |
+          python scripts/export_pipeline_details.py \
+            --river-id "${{ inputs.river_id }}" \
+            --json-out "${{ inputs.json_out }}" \
+            --yaml-out "${{ inputs.yaml_out }}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: exported-river
+          path: |
+            ${{ inputs.json_out }}
+            ${{ inputs.yaml_out }}
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${{ inputs.json_out }}" "${{ inputs.yaml_out }}"
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore(pipelines): export river"
+            git push
+          fi

@@ -1,0 +1,15 @@
+name: "Snowflake - Demo [Template]"
+type: "snowflake"
+connection_id: "<target_connection_id>"
+
+database_name: "<database_name>"
+schema_name: "<schema_name>"
+
+# Loading behavior
+loading_method: "merge"
+merge_method: "merge"
+is_ordered_merge_key: false
+order_expression:
+
+# Optional naming helpers
+table_prefix: "<table_prefix>"

@@ -1,0 +1,64 @@
+name: Export Schemas and Tables
+
+on:
+  workflow_dispatch:
+    inputs:
+      connection_id:
+        description: "Connection cross_id to inspect"
+        required: true
+      out_path:
+        description: "Path to write the schemas/tables JSON"
+        required: false
+        default: "exports/schemas_tables.json"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  export_schemas_tables:
+    runs-on: ubuntu-latest
+    env:
+      ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
+      ENV_ID:     ${{ secrets.ENV_ID }}
+      TOKEN:      ${{ secrets.TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Export schemas and tables
+        run: |
+          mkdir -p "$(dirname '${{ inputs.out_path }}')"
+          python scripts/get_schemas_tables.py \
+            --connection-id "${{ inputs.connection_id }}" \
+            --out "${{ inputs.out_path }}" \
+            --rps 0.8
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: schemas-tables
+          path: ${{ inputs.out_path }}
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${{ inputs.out_path }}"
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore(connections): export schemas and tables"
+            git push
+          fi
