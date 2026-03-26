@@ -3,6 +3,21 @@ import os, sys, json, datetime, argparse, requests, yaml
 
 API_BASE = "https://api.rivery.io"
 
+# Keys that should never appear in CI logs (mirrors get_connections.SUSPECT_KEYS)
+_LOG_REDACT = frozenset({
+    "password", "token", "access_token", "refresh_token",
+    "client_secret", "secret", "credentials", "key", "private_key",
+    "authorization", "auth", "headers", "connection_string",
+})
+
+def _redact(obj):
+    """Recursively drop known-secret keys before printing to CI logs."""
+    if isinstance(obj, dict):
+        return {k: _redact(v) for k, v in obj.items() if k.lower() not in _LOG_REDACT}
+    if isinstance(obj, list):
+        return [_redact(x) for x in obj]
+    return obj
+
 def require_env(name: str) -> str:
     """Read a required environment variable or exit with a clear error."""
     val = os.environ.get(name)
@@ -93,7 +108,7 @@ def main():
     except Exception: data = {"raw": resp.text}
 
     print(resp.status_code)
-    print(json.dumps(data, indent=2))
+    print(json.dumps(_redact(data), indent=2))
 
     rid = data.get("river_cross_id") or data.get("cross_id")
     print(json.dumps({"river_cross_id": rid}))
