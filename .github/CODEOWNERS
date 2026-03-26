@@ -1,4 +1,7 @@
 # Team ownership per folder
-/configs/pipelines/team-a/  @Merv-Boomi
-/scripts/                   @Merv-Boomi
-/.github/workflows/         @Merv-Boomi
+# Replace @your-org/data-platform-team with your actual GitHub team or usernames.
+# Example: /configs/pipelines/  @your-org/data-engineering
+/configs/pipelines/         @your-org/data-platform-team
+/scripts/                   @your-org/data-platform-team
+/.github/                   @your-org/data-platform-team
+/examples/                  @your-org/data-platform-team

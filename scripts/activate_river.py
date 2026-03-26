@@ -3,6 +3,21 @@ import os, sys, json, argparse, requests, yaml, re
 
 API_BASE = "https://api.rivery.io"
 
+# Keys that should never appear in CI logs
+_LOG_REDACT = frozenset({
+    "password", "token", "access_token", "refresh_token",
+    "client_secret", "secret", "credentials", "key", "private_key",
+    "authorization", "auth", "headers", "connection_string",
+})
+
+def _redact(obj):
+    """Recursively drop known-secret keys before printing to CI logs."""
+    if isinstance(obj, dict):
+        return {k: _redact(v) for k, v in obj.items() if k.lower() not in _LOG_REDACT}
+    if isinstance(obj, list):
+        return [_redact(x) for x in obj]
+    return obj
+
 # ---------- helpers ----------
 def require_env(name: str) -> str:
     v = os.environ.get(name)
@@ -65,7 +80,7 @@ def main() -> int:
         print(resp.text)
         sys.exit(1)
 
-    print(json.dumps(data, indent=2))
+    print(json.dumps(_redact(data), indent=2))
 
     if resp.status_code not in (200, 201, 202):
         # Machine-readable failure for CI logs

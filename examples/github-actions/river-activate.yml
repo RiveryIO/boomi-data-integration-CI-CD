@@ -1,0 +1,49 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# OPTIONAL EXAMPLE — GitHub Actions
+# The scripts in scripts/ are CI-agnostic and run on any CI platform or locally.
+# See README.md for env-var reference and Bitbucket Pipelines examples.
+# Canonical copy of this file: examples/github-actions/river-activate.yml
+# ──────────────────────────────────────────────────────────────────────────────
+name: Activate River
+
+on:
+  workflow_dispatch:
+    inputs:
+      pipeline_config:
+        description: "Path to pipeline YAML (with cross_id stamped)"
+        required: true
+        default: "configs/pipelines/team-a/mysql_to_snowflake_demo.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
+      ENV_ID:     ${{ secrets.ENV_ID }}
+      TOKEN:      ${{ secrets.TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pyyaml
+
+      - name: Activate river
+        run: |
+          python scripts/activate_river.py \
+            --pipeline-config "${{ inputs.pipeline_config }}" \
+            --account-id "$ACCOUNT_ID" \
+            --environment-id "$ENV_ID"
