@@ -1,0 +1,192 @@
+# Bitbucket Pipelines — Boomi Data Integration CI/CD
+#
+# All pipeline operations are exposed as manual triggers ("custom" pipelines).
+# Run them from Pipelines → Run pipeline → select branch → select pipeline.
+#
+# Required repository variables (Repository settings → Repository variables):
+#   ACCOUNT_ID   – Boomi Data Integration account ID
+#   ENV_ID       – Target environment ID
+#   TOKEN        – Boomi Data Integration API token  (mark as Secured)
+#
+# For multi-environment repos, create Deployments (Settings → Deployments)
+# and scope each variable to the relevant deployment environment.
+
+image: python:3.11-slim
+
+definitions:
+  # Reusable step fragment – install pinned Python deps
+  steps:
+    - step: &install-deps
+        name: Install dependencies
+        script:
+          - pip install --quiet -r requirements.txt
+
+pipelines:
+  custom:
+
+    # ── River lifecycle ──────────────────────────────────────────────────────
+
+    river-create:
+      - variables:
+          - name: PIPELINE_CONFIG
+            description: "Path to pipeline YAML (e.g. configs/pipelines/team-a/mysql_to_snowflake_demo.yml)"
+            default: "configs/pipelines/team-a/mysql_to_snowflake_demo.yml"
+      - step:
+          name: Create river
+          script:
+            - pip install --quiet -r requirements.txt
+            - python scripts/create_river.py --pipeline-config "$PIPELINE_CONFIG"
+
+    river-update:
+      - variables:
+          - name: PIPELINE_CONFIG
+            description: "Path to pipeline YAML (must contain cross_id)"
+            default: "configs/pipelines/team-a/mysql_to_snowflake_demo.yml"
+          - name: CHANGE_NOTE
+            description: "Free-text description of this change (stamped into YAML)"
+            default: ""
+      - step:
+          name: Update river (YAML is source of truth)
+          script:
+            - pip install --quiet -r requirements.txt
+            - python scripts/update_river.py --pipeline-config "$PIPELINE_CONFIG"
+            - >
+              PIPELINE_ACTION=update
+              python scripts/stamp_ci_metadata.py
+            - git config user.email "pipelines-bot@your-org.example.com"
+            - git config user.name  "Bitbucket Pipelines Bot"
+            - git add "$PIPELINE_CONFIG"
+            - |
+              if git diff --cached --quiet; then
+                echo "No YAML changes to commit."
+              else
+                git commit -m "chore(pipelines): stamp ci_metadata for update [skip ci]"
+                git push
+              fi
+
+    river-activate:
+      - variables:
+          - name: PIPELINE_CONFIG
+            description: "Path to pipeline YAML (must contain cross_id)"
+            default: "configs/pipelines/team-a/mysql_to_snowflake_demo.yml"
+      - step:
+          name: Activate river
+          script:
+            - pip install --quiet -r requirements.txt
+            - python scripts/activate_river.py --pipeline-config "$PIPELINE_CONFIG"
+
+    river-run:
+      - variables:
+          - name: PIPELINE_CONFIG
+            description: "Path to pipeline YAML (must contain cross_id)"
+            default: "configs/pipelines/team-a/mysql_to_snowflake_demo.yml"
+      - step:
+          name: Run river on-demand
+          script:
+            - pip install --quiet -r requirements.txt
+            - python scripts/run_river.py --pipeline-config "$PIPELINE_CONFIG"
+
+    river-disable:
+      - variables:
+          - name: PIPELINE_CONFIG
+            description: "Path to pipeline YAML (must contain cross_id)"
+            default: "configs/pipelines/team-a/mysql_to_snowflake_demo.yml"
+      - step:
+          name: Disable river
+          script:
+            - pip install --quiet -r requirements.txt
+            - python scripts/disable_river.py --pipeline-config "$PIPELINE_CONFIG"
+
+    # ── Export / discovery ───────────────────────────────────────────────────
+
+    export-river:
+      - variables:
+          - name: RIVER_ID
+            description: "River cross_id to export (24-hex string)"
+          - name: JSON_OUT
+            description: "Output path for raw river JSON"
+            default: "exports/river.json"
+          - name: YAML_OUT
+            description: "Output path for generated pipeline YAML"
+            default: "configs/pipelines/exported/river.yml"
+      - step:
+          name: Export river to JSON + YAML
+          script:
+            - pip install --quiet -r requirements.txt
+            - mkdir -p "$(dirname "$JSON_OUT")" "$(dirname "$YAML_OUT")"
+            - >
+              python scripts/export_pipeline_details.py
+              --river-id    "$RIVER_ID"
+              --json-out    "$JSON_OUT"
+              --yaml-out    "$YAML_OUT"
+            - git config user.email "pipelines-bot@your-org.example.com"
+            - git config user.name  "Bitbucket Pipelines Bot"
+            - git add "$JSON_OUT" "$YAML_OUT"
+            - |
+              if git diff --cached --quiet; then
+                echo "No changes to commit."
+              else
+                git commit -m "chore(pipelines): export river [skip ci]"
+                git push
+              fi
+
+    export-connections:
+      - variables:
+          - name: OUT_PATH
+            description: "Output path for connections JSON"
+            default: "connections/connections.json"
+          - name: SANITIZE
+            description: "Set to 'true' to strip potential secret fields from output"
+            default: "true"
+      - step:
+          name: Export connection inventory
+          script:
+            - pip install --quiet -r requirements.txt
+            - apt-get update -qq && apt-get install -y -qq jq
+            - mkdir -p "$(dirname "$OUT_PATH")"
+            - >
+              python scripts/get_connections.py
+              --out "$OUT_PATH"
+              --rps 0.8
+              $([ "$SANITIZE" = "true" ] && echo "--sanitize")
+            - |
+              ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+              jq --arg ts "$ts" '. + {__pipeline_generated_at_utc: $ts}' "$OUT_PATH" > tmp && mv tmp "$OUT_PATH"
+            - git config user.email "pipelines-bot@your-org.example.com"
+            - git config user.name  "Bitbucket Pipelines Bot"
+            - git add "$OUT_PATH"
+            - |
+              if git diff --cached --quiet; then
+                echo "No changes to commit."
+              else
+                git commit -m "chore(connections): update connection inventory [skip ci]"
+                git push
+              fi
+
+    export-schemas-tables:
+      - variables:
+          - name: CONNECTION_ID
+            description: "Connection cross_id to inspect"
+          - name: OUT_PATH
+            description: "Output path for schemas/tables JSON"
+            default: "exports/schemas_tables.json"
+      - step:
+          name: Export schemas and tables
+          script:
+            - pip install --quiet -r requirements.txt
+            - mkdir -p "$(dirname "$OUT_PATH")"
+            - >
+              python scripts/get_schemas_tables.py
+              --connection-id "$CONNECTION_ID"
+              --out "$OUT_PATH"
+              --rps 0.8
+            - git config user.email "pipelines-bot@your-org.example.com"
+            - git config user.name  "Bitbucket Pipelines Bot"
+            - git add "$OUT_PATH"
+            - |
+              if git diff --cached --quiet; then
+                echo "No changes to commit."
+              else
+                git commit -m "chore(connections): export schemas and tables [skip ci]"
+                git push
+              fi

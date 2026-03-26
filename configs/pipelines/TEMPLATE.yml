@@ -1,0 +1,115 @@
+# =========================================
+# Pipeline YAML (Pre-Create Template)
+# Purpose: Minimal inputs a data engineer sets BEFORE running the "create" step.
+# After Create: copy the cross_id from the workflow output into advanced.cross_id.
+# =========================================
+
+# --- Human-friendly name (slug). Used to generate the actual river name at create time.
+name: <short_slug_for_pipeline>   # e.g., mysql_to_snowflake_ci_cd_demo
+
+# --- What this pipeline does
+description: <what_this_pipeline_does>  # e.g., Ingest MySQL tables into Snowflake (merge load).
+
+# --- Desired status post-update; create step typically sets disabled; activate via separate action.
+river_status: disabled   # one of: disabled | active
+
+# --- SOURCE CONNECTION (pick IDs from connections/*.json)
+source:
+  # Connector type (keep as lowercase id used by Rivery)
+  type: mysql
+  # REQUIRED: source connection cross_id from your exported connections file
+  connection_id: "<SOURCE_CONNECTION_CROSS_ID>"
+  # Optional: for human readability only
+  connection_name: "<SOURCE_CONNECTION_NAME>"
+
+# --- TARGET CONNECTION + settings
+target:
+  type: snowflake
+  connection_id: "<TARGET_CONNECTION_CROSS_ID>"
+  connection_name: "<TARGET_CONNECTION_NAME>"
+
+  # REQUIRED for Snowflake targets
+  database_name: "<SNOWFLAKE_DATABASE>"   # e.g., SOLUTIONS
+  schema_name:   "<SNOWFLAKE_SCHEMA>"     # e.g., MERVDEMO
+
+  # Optional refinements (safe defaults shown)
+  table_name: ""                # leave blank for multi-table ingestion
+  target_prefix: ""             # prefix for created tables, if any
+  loading_method: merge         # merge | insert | truncate_insert | etc.
+  merge_method: merge           # merge | delete_insert | etc.
+  is_ordered_merge_key: false
+  order_expression: null
+
+  # File zone behavior (paths often stamped by platform post-create)
+  file_zone_settings:
+    path: ""                    # auto-stamped after create
+    bucket_name: ""             # if using external bucket
+    partitioned_kind: by_day    # by_day | none | by_hour
+    fz_loading_mode: auto-period
+
+  file_path_destination: null   # leave null unless routing files explicitly
+  additional_settings: {}       # advanced target knobs (usually empty)
+
+# --- How to extract from the source
+run_type: multi_tables          # multi_tables | predefined_tables | cdc
+
+# CDC-only controls (leave {} unless run_type=cdc)
+cdc_settings: {}
+
+# Source extraction knobs (common: extract_method=all|incremental|cdc)
+additional_settings:
+  extract_method: all
+  # The following are typical MySQL defaults; safe to keep as-is.
+  datasource_id: mysql
+  connection_type: mysql
+  quote: '"'
+  delimiter: ','
+  source_format: CSV
+  fz_partition: d
+  fz_batched: true
+  filters:
+    - file_type: csv
+      csv_details:
+        quotechar: '"'
+        delimiter: ','
+      has_headers: true
+      required_tabs: 1
+      header_row: 1
+  fz_path: ""   # platform will stamp this after create
+
+# --- TABLE SELECTION
+# Leave empty pre-create. Populate schemas/tables before running Update.
+schemas: []
+# Example to use later (uncomment when ready, then run `update`):
+# schemas:
+#   - name: Merv_testing
+#     tables:
+#       - test_cdc_table
+#       - s2t_testing_table_2
+
+# --- Notifications
+notifications:
+  email: "<owner@company.com>"
+  warning_enabled: true
+  failure_enabled: true
+  threshold_enabled: true
+  run_threshold_seconds: 43200
+
+# --- Schedule (disabled by default; enable after you’re happy)
+schedule:
+  cron: "0 2 * * *"   # 02:00 every day
+  enabled: false
+
+# --- Advanced (update cross_id after Create)
+advanced:
+  cross_id: ""            # set this after Create (use the workflow output or Export River)
+  group_id: ""
+  group_name: ""
+  environment_name: ""
+  metadata_passthrough:
+    created_by: ""
+    last_updated_by: ""
+    created_at: ""
+    last_updated_at: ""
+    is_deleted: false
+  actual_name: ""         # the fully materialized river name stamped by the platform

@@ -1,0 +1,72 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# OPTIONAL EXAMPLE — GitHub Actions
+# The scripts in scripts/ are CI-agnostic and run on any CI platform or locally.
+# See README.md for env-var reference and Bitbucket Pipelines examples.
+# Canonical copy of this file: examples/github-actions/river-update.yml
+# ──────────────────────────────────────────────────────────────────────────────
+name: Update River
+
+on:
+  workflow_dispatch:
+    inputs:
+      pipeline_config:
+        description: "Path to pipeline YAML (with cross_id stamped)"
+        required: true
+        default: "configs/pipelines/team-a/mysql_to_snowflake_demo.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
+      ENV_ID:     ${{ secrets.ENV_ID }}
+      TOKEN:      ${{ secrets.TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pyyaml
+
+      - name: Update river (YAML is source of truth)
+        run: |
+          python scripts/update_river.py \
+            --account-id "$ACCOUNT_ID" \
+            --environment-id "$ENV_ID" \
+            --pipeline-config "${{ inputs.pipeline_config }}"
+
+      - name: Stamp CI metadata (update)
+        env:
+          PIPELINE_CONFIG: ${{ inputs.pipeline_config }}
+          PIPELINE_ACTION: update
+          CHANGE_NOTE: "schema/table update via YAML"
+        run: |
+          python scripts/stamp_ci_metadata.py
+
+      - name: Commit YAML (update)
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${{ inputs.pipeline_config }}"
+          if git diff --cached --quiet; then
+            echo "No YAML changes to commit."
+          else
+            git commit -m "chore(pipelines): stamp ci_metadata for update"
+            git push
+          fi

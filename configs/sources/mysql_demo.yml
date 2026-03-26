@@ -1,0 +1,22 @@
+# Human-readable name (optional)
+name: "MYSQL - Demo [Template]"
+
+# REQUIRED: connector type (maps to properties.source.name)
+type: "mysql"
+
+# REQUIRED: connection cross_id for this source
+connection_id: "<source_connection_id>"
+
+# How to extract (maps to properties.source.run_type)
+# Options: multi_tables | predefined_tables | cdc
+run_type: "multi_tables"
+
+# Only used for cdc mode (leave {} otherwise)
+cdc_settings: {}
+
+# Source-specific extra knobs (kept minimal; add only if you need them)
+additional_settings:
+  extract_method: "all"   # common values: all | incremental | cdc
+
+# Leave empty; you'll fill tables later via Discover + Update
+schemas: []

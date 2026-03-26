@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+import os, sys, json, argparse, requests, yaml, re
+
+API_BASE = "https://api.rivery.io"
+
+# Keys that should never appear in CI logs
+_LOG_REDACT = frozenset({
+    "password", "token", "access_token", "refresh_token",
+    "client_secret", "secret", "credentials", "key", "private_key",
+    "authorization", "auth", "headers", "connection_string",
+})
+
+def _redact(obj):
+    """Recursively drop known-secret keys before printing to CI logs."""
+    if isinstance(obj, dict):
+        return {k: _redact(v) for k, v in obj.items() if k.lower() not in _LOG_REDACT}
+    if isinstance(obj, list):
+        return [_redact(x) for x in obj]
+    return obj
+
+# ---------- helpers ----------
+def require_env(name: str) -> str:
+    v = os.environ.get(name)
+    if not v:
+        sys.exit(f"ERROR: {name} env var is required.")
+    return v
+
+def bearer() -> str:
+    tok = os.environ.get("TOKEN")
+    if not tok:
+        sys.exit("ERROR: TOKEN env var is required (GitHub Secret).")
+    return tok if tok.lower().startswith("bearer ") else f"Bearer {tok}"
+
+def load_yaml(path: str) -> dict:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        sys.exit(f"ERROR: pipeline config not found: {path}")
+    except Exception as e:
+        sys.exit(f"ERROR: failed to read YAML '{path}': {e}")
+
+def read_cross_id_from_yaml(pipeline_yaml: str) -> str:
+    cfg = load_yaml(pipeline_yaml)
+    rid = (cfg.get("cross_id") or (cfg.get("advanced") or {}).get("cross_id") or "").strip().strip('"').strip("'")
+    if not re.fullmatch(r"[0-9a-fA-F]{24}", rid or ""):
+        sys.exit("ERROR: No valid 24-hex cross_id in pipeline YAML. Run the 'create' action first so it stamps cross_id.")
+    return rid
+
+def post(url: str, auth: str) -> requests.Response:
+    return requests.post(
+        url,
+        headers={"Authorization": auth, "Accept": "application/json", "Content-Type": "application/json"},
+        json={},  # API expects an empty JSON body
+        timeout=60,
+    )
+
+# ---------- main ----------
+def main() -> int:
+    p = argparse.ArgumentParser(description="Disable a river (reads cross_id from pipeline YAML).")
+    p.add_argument("--pipeline-config", required=True, help="Path to pipeline YAML (must contain cross_id or advanced.cross_id)")
+    # account/env are taken from env; flags allow local override if desired
+    p.add_argument("--account-id", default=os.environ.get("ACCOUNT_ID"))
+    p.add_argument("--environment-id", default=os.environ.get("ENV_ID") or os.environ.get("ENVIRONMENT_ID"))
+    args = p.parse_args()
+
+    account_id = args.account_id or require_env("ACCOUNT_ID")
+    env_id     = args.environment_id or require_env("ENV_ID") or require_env("ENVIRONMENT_ID")
+    auth       = bearer()
+
+    river_id = read_cross_id_from_yaml(args.pipeline_config)
+    url = f"{API_BASE}/v1/accounts/{account_id}/environments/{env_id}/rivers/{river_id}/disable_river"
+
+    resp = post(url, auth)
+
+    print("HTTP", resp.status_code)
+    try:
+        data = resp.json()
+    except Exception:
+        print(resp.text)
+        sys.exit(1)
+
+    print(json.dumps(_redact(data), indent=2))
+
+    if resp.status_code not in (200, 201, 202):
+        print(json.dumps({"status": "error", "river_cross_id": river_id, "http": resp.status_code}))
+        return 1
+
+    op_id   = data.get("operation_id")
+    run_id  = data.get("run_id")
+    status  = data.get("status")
+    result  = data.get("result")
+    err_msg = data.get("error_message")
+
+    print("\nSummary:")
+    print(f"- operation_id: {op_id}")
+    print(f"- run_id      : {run_id}")
+    print(f"- status      : {status}")
+    print(f"- result      : {result}")
+    if err_msg:
+        print(f"- error       : {err_msg}")
+
+    print(json.dumps({"status": "ok", "river_cross_id": river_id, "http": resp.status_code}))
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
