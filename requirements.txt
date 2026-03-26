@@ -1,0 +1,5 @@
+# Python dependencies for scripts/
+# Pin versions here for reproducible CI runs.
+# To upgrade: pip install --upgrade requests PyYAML && pip freeze | grep -E "^(requests|PyYAML)==" > requirements.txt
+requests==2.32.3
+PyYAML==6.0.2
